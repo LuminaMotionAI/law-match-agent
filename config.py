@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-import streamlit as st
 
 # .env 파일 로드
 load_dotenv()
@@ -13,9 +12,16 @@ def get_secret(key, default=""):
     
     # 2. Streamlit secrets에서 확인 (Streamlit 클라우드 배포 시)
     try:
+        import streamlit as st
         if hasattr(st, 'secrets') and key in st.secrets:
             value = st.secrets[key]
-    except:
+            print(f"✅ Streamlit secrets에서 {key} 로드됨")
+        elif value and value != default:
+            print(f"✅ 환경변수에서 {key} 로드됨")
+        else:
+            print(f"⚠️ {key}를 찾을 수 없음 (기본값 사용: {default})")
+    except Exception as e:
+        print(f"⚠️ Streamlit secrets 접근 오류: {e}")
         pass
     
     return value
@@ -106,10 +112,16 @@ class Config:
     @staticmethod
     def validate_config():
         """필수 설정 검증"""
+        print(f"🔍 Config 검증 시작...")
+        print(f"📋 OPENAI_API_KEY: {'✅ 설정됨' if Config.OPENAI_API_KEY else '❌ 설정되지 않음'}")
+        print(f"📋 LAW_OC_CODE: {Config.LAW_OC_CODE}")
+        print(f"📋 LAW_API_URL: {Config.LAW_API_URL}")
+        
         if not Config.OPENAI_API_KEY:
             raise ValueError("❌ OPENAI_API_KEY가 설정되지 않았습니다.")
         
         if not Config.is_api_configured("openai"):
             raise ValueError("❌ OpenAI API 키가 올바르지 않습니다.")
             
+        print(f"✅ Config 검증 완료!")
         return True 
