@@ -78,16 +78,18 @@ def init_components():
             st.sidebar.error(f"부분 초기화도 실패: {e2}")
             return None, None, None, None
 
-# 세션 상태 초기화
-if 'case_analysis' not in st.session_state:
-    st.session_state.case_analysis = None
-if 'precedents' not in st.session_state:
-    st.session_state.precedents = []
-if 'search_history' not in st.session_state:
-    st.session_state.search_history = []
+# 세션 상태는 main() 함수 내에서 초기화됨
 
 def main():
     """메인 애플리케이션"""
+    
+    # 🔧 세션 상태 초기화 (Streamlit Cloud 호환성)
+    if 'case_analysis' not in st.session_state:
+        st.session_state.case_analysis = None
+    if 'precedents' not in st.session_state:
+        st.session_state.precedents = []
+    if 'search_history' not in st.session_state:
+        st.session_state.search_history = []
     
     # 타이틀
     st.title("⚖️ 판례 검색 & 사건 분석 에이전트")
