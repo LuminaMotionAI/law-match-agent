@@ -2,31 +2,76 @@ import requests
 import json
 import xmltodict
 from typing import List, Dict, Optional
-from config import Config
-import re
 from datetime import datetime
 import urllib.parse
+import re
+
+# Config 임포트를 try-except로 감싸서 Streamlit Cloud 호환성 확보
+try:
+    from config import Config
+    CONFIG_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Config 모듈 로딩 오류: {e}")
+    CONFIG_AVAILABLE = False
+    
+    # Fallback 설정값들
+    class FallbackConfig:
+        LAW_OC_CODE = "guest"
+        LAW_API_URL = "http://www.law.go.kr/DRF/lawSearch.do"
+        CASE_SEARCH_API_URL = "https://www.scourt.go.kr/portal/api"
+        
+        @staticmethod
+        def get_api_key(key_name):
+            return None
+    
+    Config = FallbackConfig()
 
 class LawAPI:
-    """한국 법률 정보 API 연동 클래스"""
+    """한국 법률 정보 API 연동 클래스 (Streamlit Cloud 호환)"""
     
     def __init__(self):
-        # 국가법령정보센터 API 설정
-        self.law_oc_code = Config.LAW_OC_CODE  # 이메일 ID
-        self.law_api_url = Config.LAW_API_URL
+        # 🔧 Config 초기화 오류 대응
+        try:
+            if CONFIG_AVAILABLE:
+                # 국가법령정보센터 API 설정
+                self.law_oc_code = getattr(Config, 'LAW_OC_CODE', 'guest')
+                self.law_api_url = getattr(Config, 'LAW_API_URL', 'http://www.law.go.kr/DRF/lawSearch.do')
+                
+                # 판례검색 API 설정
+                self.case_search_api_key = Config.get_api_key("case_search") if hasattr(Config, 'get_api_key') else None
+                self.case_search_api_url = getattr(Config, 'CASE_SEARCH_API_URL', 'https://www.scourt.go.kr/portal/api')
+                
+                # 레거시 호환성
+                self.law_api_key = Config.get_api_key("law") if hasattr(Config, 'get_api_key') else None
+                self.lawinfo_api_key = self.law_oc_code
+                self.base_url = self.law_api_url
+                
+                # 카카오 API 설정
+                self.kakao_api_key = Config.get_api_key("kakao") if hasattr(Config, 'get_api_key') else None
+            else:
+                # Fallback 설정 사용
+                self.law_oc_code = "guest"
+                self.law_api_url = "http://www.law.go.kr/DRF/lawSearch.do"
+                self.case_search_api_key = None
+                self.case_search_api_url = "https://www.scourt.go.kr/portal/api"
+                self.law_api_key = None
+                self.lawinfo_api_key = "guest"
+                self.base_url = self.law_api_url
+                self.kakao_api_key = None
+                
+        except Exception as e:
+            print(f"⚠️ API 설정 초기화 오류: {e} - 기본값 사용")
+            # 기본값 설정
+            self.law_oc_code = "guest"
+            self.law_api_url = "http://www.law.go.kr/DRF/lawSearch.do"
+            self.case_search_api_key = None
+            self.case_search_api_url = "https://www.scourt.go.kr/portal/api"
+            self.law_api_key = None
+            self.lawinfo_api_key = "guest"
+            self.base_url = self.law_api_url
+            self.kakao_api_key = None
         
-        # 판례검색 API 설정
-        self.case_search_api_key = Config.get_api_key("case_search")
-        self.case_search_api_url = Config.CASE_SEARCH_API_URL
-        
-        # 레거시 호환성
-        self.law_api_key = Config.get_api_key("law")
-        self.lawinfo_api_key = self.law_oc_code  # OC 코드 사용
-        self.base_url = self.law_api_url
-        
-        # 카카오 API 설정 (주소 검색용)
-        self.kakao_api_key = Config.get_api_key("kakao")
-        
+        # HTTP 세션 설정
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'LawMatchAgent/1.0 (https://github.com/user/law-match-agent)',
@@ -239,7 +284,7 @@ class LawAPI:
 
     def get_law_article(self, law_name: str, article_number: str) -> Dict:
         """
-        법률 조항 검색
+        법률 조항 검색 (Streamlit Cloud 완전 호환)
         
         Args:
             law_name: 법률명 (예: "형법", "민법")
@@ -249,7 +294,7 @@ class LawAPI:
             법률 조항 정보
         """
         try:
-            # 샘플 법률 조항 데이터
+            # 🔧 확장된 법률 조항 데이터베이스 (Streamlit Cloud 내장)
             law_articles = {
                 "형법": {
                     "243": {
@@ -262,9 +307,16 @@ class LawAPI:
                     "347": {
                         "title": "사기",
                         "content": "사람을 기망하여 재물의 교부를 받거나 재산상의 이익을 취득한 자는 10년 이하의 징역 또는 2천만원 이하의 벌금에 처한다.",
-                        "law_number": "형법 제347조",
+                        "law_number": "형법 제347조", 
                         "category": "재산에 대한 죄",
                         "subcategory": "사기와 공갈의 죄"
+                    },
+                    "1": {
+                        "title": "범죄의 성립과 처벌",
+                        "content": "죄형법정주의에 따라 법률이 정하지 아니하면 범죄가 되지 아니하고 형벌을 과하지 아니한다.",
+                        "law_number": "형법 제1조",
+                        "category": "통칙",
+                        "subcategory": "기본원칙"
                     }
                 },
                 "민법": {
@@ -274,6 +326,20 @@ class LawAPI:
                         "law_number": "민법 제750조",
                         "category": "채권",
                         "subcategory": "불법행위로 인한 채권"
+                    },
+                    "751": {
+                        "title": "재산 이외의 손해의 배상",
+                        "content": "타인의 신체, 자유 또는 인격권을 침해한 경우에는 재산 이외의 손해에 대하여도 배상할 책임이 있다.",
+                        "law_number": "민법 제751조",
+                        "category": "채권",
+                        "subcategory": "불법행위로 인한 채권"
+                    },
+                    "1": {
+                        "title": "권리능력의 시기",
+                        "content": "사람은 생존하는 동안 권리와 의무의 주체가 된다.",
+                        "law_number": "민법 제1조",
+                        "category": "일반규정",
+                        "subcategory": "기본원칙"
                     }
                 },
                 "정보통신망 이용촉진 및 정보보호 등에 관한 법률": {
@@ -293,23 +359,59 @@ class LawAPI:
                         "category": "정보통신망 관련 특별법",
                         "subcategory": "불법정보 유통 금지"
                     }
+                },
+                "개인정보보호법": {
+                    "71": {
+                        "title": "벌칙",
+                        "content": "다음 각 호의 어느 하나에 해당하는 자는 5년 이하의 징역 또는 5천만원 이하의 벌금에 처한다.",
+                        "law_number": "개인정보보호법 제71조",
+                        "category": "개인정보보호",
+                        "subcategory": "벌칙"
+                    }
+                },
+                "상법": {
+                    "1": {
+                        "title": "상법의 적용범위",
+                        "content": "상인의 영업에 관하여는 다른 법률에 특별한 규정이 있는 경우를 제외하고는 이 법이 정하는 바에 의한다.",
+                        "law_number": "상법 제1조",
+                        "category": "총칙",
+                        "subcategory": "기본원칙"
+                    }
                 }
             }
             
-            if law_name in law_articles and article_number in law_articles[law_name]:
-                article_info = law_articles[law_name][article_number]
+            # 🔍 법률명 정규화 (별칭 처리)
+            law_aliases = {
+                "정통법": "정보통신망 이용촉진 및 정보보호 등에 관한 법률",
+                "정보통신망법": "정보통신망 이용촉진 및 정보보호 등에 관한 법률",
+                "개보법": "개인정보보호법",
+                "개인정보법": "개인정보보호법"
+            }
+            
+            normalized_law_name = law_aliases.get(law_name, law_name)
+            
+            # 검색 실행
+            if normalized_law_name in law_articles and article_number in law_articles[normalized_law_name]:
+                article_info = law_articles[normalized_law_name][article_number].copy()
                 article_info["exists"] = True
+                article_info["source"] = "내장 데이터베이스"
                 return article_info
             else:
                 return {
                     "exists": False,
-                    "message": f"{law_name} 제{article_number}조를 찾을 수 없습니다.",
-                    "law_number": f"{law_name} 제{article_number}조"
+                    "message": f"{law_name} 제{article_number}조를 내장 데이터베이스에서 찾을 수 없습니다.",
+                    "law_number": f"{law_name} 제{article_number}조",
+                    "suggestion": "더 많은 법률 조항을 찾으려면 '국가법령정보센터(law.go.kr)'에서 직접 검색해보세요.",
+                    "search_url": f"https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=&efYd=&chrClsCd=010202&ancYnChk=0#J{article_number}:{law_name}"
                 }
                 
         except Exception as e:
-            print(f"법률 조항 검색 오류: {e}")
-            return {"exists": False, "message": f"검색 중 오류가 발생했습니다: {e}"}
+            print(f"⚠️ 법률 조항 검색 오류: {e}")
+            return {
+                "exists": False, 
+                "message": f"검색 중 오류가 발생했습니다: {e}",
+                "error": str(e)
+            }
     
     def verify_case_number(self, case_number: str, use_ai_search: bool = True) -> Dict:
         """
@@ -614,7 +716,7 @@ class LawAPI:
         """
         try:
             # 대법원 포털 판례검색 API 엔드포인트
-            search_url = f"{self.scourt_api_url}/search/precedent"
+            search_url = f"{self.case_search_api_url}/search/precedent"
             
             # 검색 파라미터
             params = {
@@ -677,7 +779,7 @@ class LawAPI:
             판례 검색 결과 리스트
         """
         try:
-            search_url = f"{self.scourt_api_url}/search/precedent"
+            search_url = f"{self.case_search_api_url}/search/precedent"
             
             params = {
                 'keyword': keyword,
