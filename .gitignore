@@ -1,0 +1,105 @@
+# 환경 변수 파일
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# API 키 파일
+*.key
+*.secret
+
+# Python 관련
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 가상 환경
+venv/
+ENV/
+env/
+.venv/
+.ENV/
+.env/
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 운영체제 파일
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 로그 파일
+*.log
+logs/
+
+# 업로드 파일
+uploads/
+temp/
+tmp/
+
+# 데이터베이스 파일
+*.db
+*.sqlite
+*.sqlite3
+
+# 캐시 파일
+.cache/
+.mypy_cache/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 테스트 관련
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Streamlit 관련
+.streamlit/secrets.toml
+
+# 모델 파일 (용량이 큰 경우)
+models/
+*.pkl
+*.model
+*.h5
+*.pth
+
+# 임시 파일
+*.tmp
+*.bak
+*.backup 

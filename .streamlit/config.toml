@@ -1,0 +1,31 @@
+[global]
+# 개발 모드 설정
+developmentMode = false
+
+[server]
+# 서버 포트 설정
+port = 8501
+# 헤더 메시지 표시 비활성화
+headless = true
+# 파일 업로드 최대 크기 설정 (MB)
+maxUploadSize = 10
+# 메모리 최대 사용량 설정 (MB)
+maxMessageSize = 500
+
+[browser]
+# 브라우저 자동 실행 비활성화
+gatherUsageStats = false
+
+[theme]
+# 테마 설정
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[logger]
+# 로그 레벨 설정
+level = "info"
+
+# [client] 설정은 더 이상 사용되지 않습니다 
