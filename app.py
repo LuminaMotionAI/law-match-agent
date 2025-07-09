@@ -16,6 +16,25 @@ if 'torch' in sys.modules:
     import torch
     torch.set_num_threads(1)
 
+# 🔧 임시 디버깅: Secrets 상태 확인
+st.sidebar.header("🔧 디버깅 정보")
+try:
+    env_key = os.getenv("OPENAI_API_KEY", "")
+    st.sidebar.write(f"환경변수: {'✅' if env_key else '❌'}")
+    
+    secrets_key = st.secrets.get("OPENAI_API_KEY", "") if hasattr(st, 'secrets') else ""
+    st.sidebar.write(f"Secrets: {'✅' if secrets_key else '❌'}")
+    
+    if secrets_key:
+        masked = secrets_key[:10] + "..." + secrets_key[-4:] if len(secrets_key) > 14 else "짧음"
+        st.sidebar.write(f"키: {masked}")
+    
+    law_oc = st.secrets.get("LAW_OC_CODE", "") if hasattr(st, 'secrets') else ""
+    st.sidebar.write(f"LAW_OC_CODE: {law_oc}")
+    
+except Exception as e:
+    st.sidebar.error(f"디버깅 오류: {e}")
+
 # 커스텀 모듈 임포트
 from config import Config
 from api import LawAPI, OpenAIAPI
@@ -34,15 +53,30 @@ st.set_page_config(
 def init_components():
     """컴포넌트 초기화"""
     try:
-        Config.validate_config()
+        # 🔧 임시: config 검증을 건너뛰고 강제로 초기화 시도
+        st.sidebar.write("🔄 컴포넌트 초기화 시도 중...")
+        
         law_api = LawAPI()
-        openai_api = OpenAIAPI()
+        openai_api = OpenAIAPI()  # 이 부분에서 에러가 날 수 있음
         file_processor = FileProcessor()
         text_analyzer = TextAnalyzer()
+        
+        st.sidebar.success("✅ 모든 컴포넌트 초기화 성공")
         return law_api, openai_api, file_processor, text_analyzer
+        
     except Exception as e:
-        st.error(f"초기화 오류: {e}")
-        return None, None, None, None
+        st.sidebar.error(f"초기화 오류: {e}")
+        
+        # 🔧 임시: 부분적으로라도 초기화 시도
+        try:
+            law_api = LawAPI()
+            file_processor = FileProcessor()
+            text_analyzer = TextAnalyzer()
+            st.sidebar.warning("⚠️ OpenAI API 없이 부분 초기화")
+            return law_api, None, file_processor, text_analyzer
+        except Exception as e2:
+            st.sidebar.error(f"부분 초기화도 실패: {e2}")
+            return None, None, None, None
 
 # 세션 상태 초기화
 if 'case_analysis' not in st.session_state:
@@ -62,9 +96,13 @@ def main():
     # 컴포넌트 초기화
     law_api, openai_api, file_processor, text_analyzer = init_components()
     
-    if not all([law_api, openai_api, file_processor, text_analyzer]):
-        st.error("시스템 초기화에 실패했습니다. 설정을 확인해주세요.")
+    # 🔧 임시: 부분 초기화도 허용
+    if not any([law_api, file_processor, text_analyzer]):
+        st.error("시스템 초기화에 완전히 실패했습니다. 설정을 확인해주세요.")
         return
+    
+    if not openai_api:
+        st.warning("⚠️ OpenAI API가 초기화되지 않았습니다. 일부 기능이 제한됩니다.")
     
     # 사이드바 메뉴
     with st.sidebar:
