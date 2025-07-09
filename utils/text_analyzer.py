@@ -1,9 +1,8 @@
 import re
 import numpy as np
 from typing import List, Dict, Tuple, Optional
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import faiss
+import warnings
+warnings.filterwarnings("ignore")
 
 class TextAnalyzer:
     """텍스트 분석 및 유사도 계산 클래스"""
@@ -15,17 +14,50 @@ class TextAnalyzer:
         Args:
             model_name: 사용할 sentence transformer 모델명
         """
-        try:
-            # 더 간단하고 안정적인 모델로 변경
-            self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        except Exception as e:
-            print(f"SentenceTransformer 로딩 오류: {e}")
-            print("기본 임베딩 모델을 사용합니다.")
-            self.model = None
+        self.model = None
+        self._try_load_model()
         
         self.index = None
         self.precedent_embeddings = None
         self.precedent_data = None
+    
+    def _try_load_model(self):
+        """SentenceTransformer 모델 로딩 시도"""
+        try:
+            # transformers 버전 호환성 문제 해결을 위한 환경 설정
+            import os
+            os.environ["TOKENIZERS_PARALLELISM"] = "false"
+            
+            from sentence_transformers import SentenceTransformer
+            import torch
+            
+            # 간단하고 안정적인 모델들을 순서대로 시도
+            model_options = [
+                "all-MiniLM-L6-v2",
+                "paraphrase-MiniLM-L6-v2", 
+                "distiluse-base-multilingual-cased"
+            ]
+            
+            for model_name in model_options:
+                try:
+                    print(f"📚 {model_name} 모델 로딩을 시도합니다...")
+                    self.model = SentenceTransformer(model_name, device='cpu')
+                    print(f"✅ {model_name} 모델이 성공적으로 로드되었습니다!")
+                    break
+                except Exception as e:
+                    print(f"❌ {model_name} 모델 로딩 실패: {e}")
+                    continue
+                    
+            if self.model is None:
+                print("⚠️ 모든 SentenceTransformer 모델 로딩에 실패했습니다.")
+                print("💡 기본 텍스트 분석 모드로 작동합니다.")
+                
+        except ImportError:
+            print("⚠️ sentence-transformers 라이브러리가 설치되지 않았습니다.")
+            print("💡 기본 텍스트 분석 모드로 작동합니다.")
+        except Exception as e:
+            print(f"⚠️ SentenceTransformer 초기화 오류: {e}")
+            print("💡 기본 텍스트 분석 모드로 작동합니다.")
     
     def preprocess_text(self, text: str) -> str:
         """
@@ -118,8 +150,12 @@ class TextAnalyzer:
             # 임베딩 생성
             embeddings = self.model.encode([text1, text2])
             
-            # 코사인 유사도 계산
-            similarity = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+            # 코사인 유사도 계산 (sklearn 없이)
+            emb1, emb2 = embeddings[0], embeddings[1]
+            dot_product = np.dot(emb1, emb2)
+            norm_a = np.linalg.norm(emb1)
+            norm_b = np.linalg.norm(emb2)
+            similarity = dot_product / (norm_a * norm_b)
             
             return float(similarity)
             
@@ -138,7 +174,7 @@ class TextAnalyzer:
             if self.model is None:
                 # 모델이 없으면 간단한 텍스트 기반 저장
                 self.precedent_data = precedents
-                print("텍스트 기반 판례 데이터 저장 완료")
+                print("📚 텍스트 기반 판례 데이터 저장 완료")
                 return
             
             # 판례 텍스트 추출 및 전처리
@@ -150,22 +186,20 @@ class TextAnalyzer:
             # 임베딩 생성
             embeddings = self.model.encode(texts)
             
-            # FAISS 인덱스 생성
-            dimension = embeddings.shape[1]
-            self.index = faiss.IndexFlatIP(dimension)  # Inner Product (코사인 유사도)
+            # 정규화
+            embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
             
-            # 정규화 후 인덱스에 추가
-            faiss.normalize_L2(embeddings)
-            self.index.add(embeddings.astype(np.float32))
-            
-            # 참조 데이터 저장
+            # 참조 데이터 저장 (FAISS 없이 numpy 배열 사용)
             self.precedent_embeddings = embeddings
             self.precedent_data = precedents
             
+            print(f"✅ {len(precedents)}개의 판례 임베딩 인덱스 구축 완료")
+            
         except Exception as e:
-            print(f"판례 인덱스 구축 오류: {e}")
+            print(f"⚠️ 판례 인덱스 구축 오류: {e}")
             # 오류 발생 시 기본 저장
             self.precedent_data = precedents
+            print("💡 텍스트 기반 모드로 전환됩니다.")
     
     def search_similar_precedents(self, query: str, top_k: int = 5) -> List[Tuple[Dict, float]]:
         """
@@ -180,10 +214,10 @@ class TextAnalyzer:
         """
         try:
             if self.precedent_data is None:
-                print("판례 데이터가 구축되지 않았습니다.")
+                print("⚠️ 판례 데이터가 구축되지 않았습니다.")
                 return []
             
-            if self.model is None or self.index is None:
+            if self.model is None or self.precedent_embeddings is None:
                 # 기본 텍스트 기반 검색
                 return self._search_precedents_basic(query, top_k)
             
@@ -192,15 +226,19 @@ class TextAnalyzer:
             query_embedding = self.model.encode([query])
             
             # 정규화
-            faiss.normalize_L2(query_embedding)
+            query_embedding = query_embedding / np.linalg.norm(query_embedding, axis=1, keepdims=True)
             
-            # 검색 수행
-            scores, indices = self.index.search(query_embedding.astype(np.float32), top_k)
+            # 코사인 유사도 계산 (모든 판례와)
+            similarities = np.dot(self.precedent_embeddings, query_embedding.T).flatten()
+            
+            # 상위 k개 결과 선택
+            top_indices = np.argsort(similarities)[::-1][:top_k]
             
             # 결과 구성
             results = []
-            for i, (score, idx) in enumerate(zip(scores[0], indices[0])):
+            for idx in top_indices:
                 if idx < len(self.precedent_data):
+                    score = similarities[idx]
                     results.append((self.precedent_data[idx], float(score)))
             
             return results
@@ -241,7 +279,9 @@ class TextAnalyzer:
             doc_embedding = self.model.encode([text])
             
             # 각 문장과 문서 간 유사도 계산
-            similarities = cosine_similarity(embeddings, doc_embedding).flatten()
+            doc_embedding_norm = doc_embedding / np.linalg.norm(doc_embedding, axis=1, keepdims=True)
+            embeddings_norm = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+            similarities = np.dot(embeddings_norm, doc_embedding_norm.T).flatten()
             
             # 유사도가 높은 순으로 정렬
             top_indices = np.argsort(similarities)[::-1][:max_phrases]

@@ -2,8 +2,19 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import warnings
 from datetime import datetime
 from typing import List, Dict, Optional
+
+# 경고 메시지 억제
+warnings.filterwarnings("ignore")
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# PyTorch 관련 경고 억제
+import sys
+if 'torch' in sys.modules:
+    import torch
+    torch.set_num_threads(1)
 
 # 커스텀 모듈 임포트
 from config import Config
