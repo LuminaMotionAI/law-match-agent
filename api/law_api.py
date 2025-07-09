@@ -12,7 +12,7 @@ class LawAPI:
     
     def __init__(self):
         # 국가법령정보센터 API 설정
-        self.law_api_key = Config.get_api_key("law")
+        self.law_oc_code = Config.LAW_OC_CODE  # 이메일 ID
         self.law_api_url = Config.LAW_API_URL
         
         # 판례검색 API 설정
@@ -20,7 +20,8 @@ class LawAPI:
         self.case_search_api_url = Config.CASE_SEARCH_API_URL
         
         # 레거시 호환성
-        self.lawinfo_api_key = self.law_api_key
+        self.law_api_key = Config.get_api_key("law")
+        self.lawinfo_api_key = self.law_oc_code  # OC 코드 사용
         self.base_url = self.law_api_url
         
         # 카카오 API 설정 (주소 검색용)
@@ -45,13 +46,13 @@ class LawAPI:
             판례 검색 결과 리스트
         """
         try:
-            # 대법원 판례 API 호출
+            # 국가법령정보센터 판례 API 호출
             params = {
-                'OC': self.lawinfo_api_key,
+                'OC': self.law_oc_code,
                 'target': 'prec',
                 'query': query,
                 'display': str(limit),
-                'type': 'xml'
+                'type': 'XML'
             }
             
             response = self.session.get(self.base_url, params=params)
@@ -118,11 +119,11 @@ class LawAPI:
         """
         try:
             params = {
-                'OC': self.lawinfo_api_key,
+                'OC': self.law_oc_code,
                 'target': 'law',
                 'query': query,
                 'display': '20',
-                'type': 'xml'
+                'type': 'XML'
             }
             
             response = self.session.get(self.base_url, params=params)
@@ -177,11 +178,11 @@ class LawAPI:
         """
         try:
             params = {
-                'OC': self.lawinfo_api_key,
+                'OC': self.law_oc_code,
                 'target': 'prec',
                 'query': case_number,
                 'display': '1',
-                'type': 'xml'
+                'type': 'XML'
             }
             
             response = self.session.get(self.base_url, params=params)

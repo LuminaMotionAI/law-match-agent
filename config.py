@@ -28,8 +28,9 @@ class Config:
     TEMPERATURE = 0.7
     
     # 국가법령정보센터 API 설정
-    LAW_API_KEY = get_secret("LAW_API_KEY", "")
-    LAW_API_URL = get_secret("LAW_API_URL", "https://www.law.go.kr/DRF/lawService.do")
+    LAW_API_KEY = get_secret("LAW_API_KEY", "")  # 레거시 호환용
+    LAW_OC_CODE = get_secret("LAW_OC_CODE", "yukkidrumer")  # 이메일 ID
+    LAW_API_URL = get_secret("LAW_API_URL", "http://www.law.go.kr/DRF/lawSearch.do")
     
     # 판례검색 API 설정
     CASE_SEARCH_API_KEY = get_secret("CASE_SEARCH_API_KEY", "")
