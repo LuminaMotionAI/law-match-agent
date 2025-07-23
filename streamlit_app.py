@@ -6,9 +6,10 @@ import os
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 🔧 수정: app 모듈을 import하고 main() 함수 실행
-# app.py 전체를 import하여 세션 상태 초기화가 포함되도록 함
-import app
+# 🔧 수정: 가벼운 버전의 앱 사용
+# 허깅페이스 없이 로컬 데이터를 사용하는 버전
+import app_lightweight
 
 # main() 함수 실행
-app.main() 
+if __name__ == "__main__":
+    app_lightweight.main() 

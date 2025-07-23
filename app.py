@@ -16,24 +16,7 @@ if 'torch' in sys.modules:
     import torch
     torch.set_num_threads(1)
 
-# 🔧 임시 디버깅: Secrets 상태 확인
-st.sidebar.header("🔧 디버깅 정보")
-try:
-    env_key = os.getenv("OPENAI_API_KEY", "")
-    st.sidebar.write(f"환경변수: {'✅' if env_key else '❌'}")
-    
-    secrets_key = st.secrets.get("OPENAI_API_KEY", "") if hasattr(st, 'secrets') else ""
-    st.sidebar.write(f"Secrets: {'✅' if secrets_key else '❌'}")
-    
-    if secrets_key:
-        masked = secrets_key[:10] + "..." + secrets_key[-4:] if len(secrets_key) > 14 else "짧음"
-        st.sidebar.write(f"키: {masked}")
-    
-    law_oc = st.secrets.get("LAW_OC_CODE", "") if hasattr(st, 'secrets') else ""
-    st.sidebar.write(f"LAW_OC_CODE: {law_oc}")
-    
-except Exception as e:
-    st.sidebar.error(f"디버깅 오류: {e}")
+# 보안을 위해 디버깅 정보 제거됨
 
 # 커스텀 모듈 임포트
 from config import Config
@@ -80,6 +63,315 @@ def init_components():
 
 # 세션 상태는 main() 함수 내에서 초기화됨
 
+def show_enhanced_case_analysis(law_api, openai_api):
+    """🚀 향상된 사건 분석 (형사법 LLM 데이터 활용)"""
+    st.header("🚀 AI 기반 종합 사건 분석")
+    st.write("형사법 LLM 데이터와 다중 소스를 활용한 정확한 사건 분석")
+    
+    # 사건 입력
+    case_input = st.text_area(
+        "사건 내용을 자세히 입력하세요:",
+        placeholder="예: 피고인이 음주운전으로 교차로에서 횡단보도를 건너던 피해자를 충격하여 상해를 입힌 사건. 혈중알코올농도 0.15%, 피해자는 전치 8주의 상해...",
+        height=150
+    )
+    
+    # 분석 옵션
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        include_sentencing = st.checkbox("량형 동향 분석 포함", value=True)
+        include_interpretation = st.checkbox("법률 해석 포함", value=True)
+    
+    with col2:
+        case_type_filter = st.selectbox(
+            "특정 사건 유형 집중 분석:",
+            ["전체", "해석례", "판결문", "결정례", "법령"]
+        )
+        similarity_threshold = st.slider("유사도 최소 기준", 0.0, 1.0, 0.5, 0.1)
+    
+    if st.button("🔍 종합 분석 시작", type="primary"):
+        if not case_input.strip():
+            st.error("사건 내용을 입력해주세요.")
+            return
+        
+        with st.spinner("AI가 종합 분석 중입니다..."):
+            try:
+                # 향상된 사건 분석 실행
+                analysis_result = law_api.get_enhanced_case_analysis(case_input)
+                
+                if 'error' in analysis_result:
+                    st.error(f"분석 중 오류 발생: {analysis_result['error']}")
+                    return
+                
+                # 결과 표시
+                st.success("✅ 종합 분석 완료!")
+                
+                # 1. 사건 분류
+                st.subheader("📋 사건 분류")
+                classification = analysis_result.get('case_classification', 'Unknown')
+                st.info(f"분류 결과: **{classification}**")
+                
+                # 2. 유사 판례
+                similar_precedents = analysis_result.get('similar_precedents', [])
+                if similar_precedents:
+                    st.subheader("⚖️ 유사 판례")
+                    
+                    for i, case in enumerate(similar_precedents[:3], 1):
+                        with st.expander(f"판례 {i} - 유사도: {case.get('similarity_score', 0):.3f}"):
+                            st.write(f"**사건 유형:** {case.get('case_type', 'Unknown')}")
+                            st.write(f"**사건번호:** {case.get('case_id', 'N/A')}")
+                            
+                            if case.get('query'):
+                                st.write(f"**질의:** {case['query']}")
+                            
+                            if case.get('answer'):
+                                st.write(f"**답변:** {case['answer']}")
+                            
+                            st.write(f"**요약:** {case.get('summary', '')}")
+                            st.write(f"**출처:** {case.get('source', 'Unknown')}")
+                
+                # 3. 관련 법령
+                applicable_laws = analysis_result.get('applicable_laws', [])
+                if applicable_laws:
+                    st.subheader("📜 관련 법령")
+                    
+                    for law in applicable_laws[:3]:
+                        with st.expander(f"{law.get('law_name', '법령')} - {law.get('article', '')}"):
+                            st.write(f"**조문:** {law.get('content', '')}")
+                            if law.get('summary'):
+                                st.write(f"**요약:** {law['summary']}")
+                
+                # 4. 법률 해석
+                if include_interpretation:
+                    interpretations = analysis_result.get('legal_interpretations', [])
+                    if interpretations:
+                        st.subheader("🔍 법률 해석")
+                        
+                        for interp in interpretations:
+                            st.info(f"**질의:** {interp.get('question', '')}")
+                            st.write(f"**해석:** {interp.get('answer', '')}")
+                            st.write(f"**유사도:** {interp.get('similarity_score', 0):.3f}")
+                            st.write(f"**출처:** {interp.get('source', 'Unknown')}")
+                
+                # 5. 량형 동향
+                if include_sentencing:
+                    sentencing_trends = analysis_result.get('sentencing_trends', [])
+                    if sentencing_trends:
+                        st.subheader("📊 량형 동향")
+                        
+                        for trend in sentencing_trends:
+                            st.metric(
+                                label=f"{trend['type']} 평균",
+                                value=trend['average'],
+                                delta=f"{trend['cases_count']}건 기준"
+                            )
+                
+                # 6. 권고사항
+                recommendations = analysis_result.get('recommendations', [])
+                if recommendations:
+                    st.subheader("💡 권고사항")
+                    
+                    for i, rec in enumerate(recommendations, 1):
+                        st.write(f"{i}. {rec}")
+                
+                # 7. 데이터 소스 정보
+                data_sources = analysis_result.get('data_sources', [])
+                if data_sources:
+                    st.subheader("📊 활용 데이터 소스")
+                    cols = st.columns(len(data_sources))
+                    
+                    for i, source in enumerate(data_sources):
+                        with cols[i]:
+                            st.info(source)
+                
+            except Exception as e:
+                st.error(f"분석 중 오류가 발생했습니다: {e}")
+
+def show_vector_search(law_api, openai_api):
+    """🔍 고급 벡터 검색"""
+    st.header("🔍 AI 벡터 유사 사례 검색")
+    st.write("형사법 LLM 데이터를 활용한 의미론적 검색")
+    
+    # 검색 쿼리 입력
+    search_query = st.text_area(
+        "검색할 사건이나 질문을 입력하세요:",
+        placeholder="예: 음주운전으로 인한 교통사고 손해배상 책임은?",
+        height=100
+    )
+    
+    # 검색 옵션
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        case_type = st.selectbox(
+            "사건 유형:",
+            ["전체", "해석례", "판결문", "결정례", "법령"]
+        )
+    
+    with col2:
+        num_results = st.slider("검색 결과 수", 1, 20, 5)
+    
+    with col3:
+        min_similarity = st.slider("최소 유사도", 0.0, 1.0, 0.3, 0.1)
+    
+    if st.button("🔍 벡터 검색 실행", type="primary"):
+        if not search_query.strip():
+            st.error("검색 쿼리를 입력해주세요.")
+            return
+        
+        with st.spinner("AI가 유사 사례를 검색 중입니다..."):
+            try:
+                # 벡터 검색 실행
+                search_type = None if case_type == "전체" else case_type
+                results = law_api.search_similar_precedents(
+                    search_query, 
+                    case_type=search_type
+                )
+                
+                # 유사도 필터링
+                filtered_results = [
+                    r for r in results 
+                    if r.get('similarity_score', 0) >= min_similarity
+                ][:num_results]
+                
+                if not filtered_results:
+                    st.warning("검색 조건에 맞는 결과가 없습니다. 조건을 완화해보세요.")
+                    return
+                
+                st.success(f"✅ {len(filtered_results)}건의 유사 사례를 찾았습니다!")
+                
+                # 결과 표시
+                for i, result in enumerate(filtered_results, 1):
+                    with st.expander(
+                        f"🏛️ 사례 {i} - {result.get('case_type', 'Unknown')} "
+                        f"(유사도: {result.get('similarity_score', 0):.3f})"
+                    ):
+                        # 기본 정보
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write(f"**사건번호:** {result.get('case_id', 'N/A')}")
+                            st.write(f"**사건 유형:** {result.get('case_type', 'Unknown')}")
+                            st.write(f"**출처:** {result.get('source', 'Unknown')}")
+                        
+                        with col2:
+                            st.metric("유사도", f"{result.get('similarity_score', 0):.3f}")
+                            st.metric("순위", result.get('rank', 'N/A'))
+                        
+                        # 내용
+                        if result.get('query'):
+                            st.write(f"**질의/제목:** {result['query']}")
+                        
+                        if result.get('answer'):
+                            st.write(f"**답변/판시사항:** {result['answer']}")
+                        
+                        if result.get('summary'):
+                            st.write(f"**요약:** {result['summary']}")
+                        
+                        # 전문 보기
+                        if result.get('full_text'):
+                            with st.expander("📄 전문 보기"):
+                                st.text(result['full_text'])
+                
+            except Exception as e:
+                st.error(f"검색 중 오류가 발생했습니다: {e}")
+
+def show_legal_qa(law_api, openai_api):
+    """❓ 법률 질의응답"""
+    st.header("❓ AI 법률 질의응답")
+    st.write("형사법 전문 데이터를 활용한 정확한 법률 해석")
+    
+    # 질문 입력
+    legal_question = st.text_area(
+        "법률 질문을 입력하세요:",
+        placeholder="예: 교통사고에서 과실비율은 어떻게 결정되나요?",
+        height=100
+    )
+    
+    # 질문 유형 선택
+    question_type = st.selectbox(
+        "질문 유형:",
+        [
+            "일반 법률 해석",
+            "교통사고",
+            "형사사건",
+            "민사분쟁",
+            "행정법",
+            "기타"
+        ]
+    )
+    
+    if st.button("💬 질문하기", type="primary"):
+        if not legal_question.strip():
+            st.error("질문을 입력해주세요.")
+            return
+        
+        with st.spinner("AI가 법률 데이터를 검색하고 답변을 준비 중입니다..."):
+            try:
+                # 법률 해석 검색
+                interpretation = law_api.get_legal_interpretation(legal_question)
+                
+                if interpretation.get('answer'):
+                    st.success("✅ 관련 법률 해석을 찾았습니다!")
+                    
+                    # 답변 표시
+                    st.subheader("📋 질문")
+                    st.info(interpretation.get('question', legal_question))
+                    
+                    st.subheader("⚖️ 법률 해석")
+                    st.write(interpretation.get('answer', ''))
+                    
+                    # 추가 정보
+                    if interpretation.get('context'):
+                        with st.expander("📚 관련 정보"):
+                            st.write(interpretation['context'])
+                    
+                    # 신뢰도 정보
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.metric(
+                            "유사도", 
+                            f"{interpretation.get('similarity_score', 0):.3f}"
+                        )
+                    
+                    with col2:
+                        st.info(f"출처: {interpretation.get('source', 'Unknown')}")
+                    
+                    # AI 추가 분석
+                    st.subheader("🤖 AI 추가 분석")
+                    with st.spinner("OpenAI가 추가 분석 중..."):
+                        try:
+                            ai_analysis = openai_api.analyze_legal_question(
+                                legal_question,
+                                interpretation.get('answer', ''),
+                                interpretation.get('context', '')
+                            )
+                            
+                            if ai_analysis:
+                                st.write(ai_analysis)
+                            
+                        except Exception as ai_e:
+                            st.warning(f"AI 추가 분석 실패: {ai_e}")
+                
+                else:
+                    st.warning("정확한 법률 해석을 찾지 못했습니다.")
+                    
+                    # OpenAI 대체 답변
+                    st.subheader("🤖 AI 일반 답변")
+                    with st.spinner("OpenAI가 답변을 생성 중..."):
+                        try:
+                            ai_answer = openai_api.answer_legal_question(legal_question)
+                            if ai_answer:
+                                st.write(ai_answer)
+                                st.warning("⚠️ 이 답변은 AI가 생성한 일반적인 정보입니다. 정확한 법률 조언은 전문가와 상담하세요.")
+                            
+                        except Exception as ai_e:
+                            st.error(f"AI 답변 생성 실패: {ai_e}")
+                
+            except Exception as e:
+                st.error(f"질의응답 처리 중 오류가 발생했습니다: {e}")
+
 def main():
     """메인 애플리케이션"""
     
@@ -111,7 +403,7 @@ def main():
         st.header("🔧 메뉴")
         menu = st.radio(
             "기능 선택",
-            ["🏠 홈", "📄 사건 분석", "🔍 판례 검색", "✅ 법률 정보 검증", "📊 종합 리포트", "⚙️ 설정"]
+            ["🏠 홈", "📄 사건 분석", "🔍 판례 검색", "✅ 법률 정보 검증", "🚀 종합 분석", "🔍 벡터 검색", "❓ 법률 Q&A", "📊 종합 리포트", "⚙️ 설정"]
         )
         
         st.markdown("---")
@@ -140,6 +432,12 @@ def main():
         show_precedent_search(law_api, openai_api, text_analyzer)
     elif menu == "✅ 법률 정보 검증":
         show_legal_verification(law_api, openai_api)
+    elif menu == "🚀 종합 분석":
+        show_enhanced_case_analysis(law_api, openai_api)
+    elif menu == "🔍 벡터 검색":
+        show_vector_search(law_api, openai_api)
+    elif menu == "❓ 법률 Q&A":
+        show_legal_qa(law_api, openai_api)
     elif menu == "📊 종합 리포트":
         show_comprehensive_report(openai_api)
     elif menu == "⚙️ 설정":
