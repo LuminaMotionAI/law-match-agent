@@ -376,3 +376,67 @@ class OpenAIAPI:
             return len(encoding.encode(text))
         except Exception:
             return len(text) // 4  # 대략적인 추정 
+
+    def analyze_legal_question(self, question: str, existing_answer: str, context: str) -> str:
+        """법률 질문에 대한 AI 추가 분석"""
+        try:
+            prompt = f"""
+다음 법률 질문과 기존 답변을 분석하여 추가적인 인사이트를 제공해주세요:
+
+**질문**: {question}
+
+**기존 답변**: {existing_answer}
+
+**관련 맥락**: {context}
+
+다음 관점에서 추가 분석을 해주세요:
+1. 기존 답변의 핵심 포인트 요약
+2. 추가로 고려해야 할 법적 쟁점
+3. 실무상 주의사항
+4. 관련 법령이나 판례 추천
+
+한국 법률 전문가의 관점에서 답변해주세요.
+"""
+            
+            response = self.client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,
+                temperature=0.3
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            print(f"법률 질문 분석 오류: {e}")
+            return f"분석 중 오류가 발생했습니다: {str(e)}"
+    
+    def answer_legal_question(self, question: str) -> str:
+        """법률 질문에 대한 일반적인 AI 답변"""
+        try:
+            prompt = f"""
+다음 법률 질문에 대해 한국 법률을 기준으로 답변해주세요:
+
+**질문**: {question}
+
+답변 시 다음 사항을 포함해주세요:
+1. 관련 법령 및 조항
+2. 일반적인 법적 해석
+3. 실무상 고려사항
+4. 주의사항 및 면책조항
+
+반드시 "이 답변은 일반적인 정보 제공 목적이며, 구체적인 법률 조언은 전문 변호사와 상담하시기 바랍니다."라는 면책 조항을 포함해주세요.
+"""
+            
+            response = self.client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500,
+                temperature=0.3
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            print(f"법률 질문 답변 오류: {e}")
+            return f"답변 생성 중 오류가 발생했습니다: {str(e)}" 

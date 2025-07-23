@@ -6,6 +6,9 @@ from datetime import datetime
 import urllib.parse
 import re
 
+from utils.legal_data_processor import LegalDataProcessor
+from setup_vector_db import AdvancedLegalVectorDB
+
 # Config 임포트를 try-except로 감싸서 Streamlit Cloud 호환성 확보
 try:
     from config import Config
@@ -27,7 +30,7 @@ except Exception as e:
     Config = FallbackConfig()
 
 class LawAPI:
-    """한국 법률 정보 API 연동 클래스 (Streamlit Cloud 호환)"""
+    """향상된 한국 법률 정보 API 클래스"""
     
     def __init__(self):
         # 🔧 Config 초기화 오류 대응
@@ -79,6 +82,28 @@ class LawAPI:
             'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
         })
         
+        # 고급 벡터 데이터베이스 초기화
+        self.vector_db = None
+        self._init_vector_db()
+        
+        # 형사법 LLM 데이터 프로세서
+        self.legal_processor = LegalDataProcessor()
+    
+    def _init_vector_db(self):
+        """벡터 데이터베이스 초기화"""
+        try:
+            self.vector_db = AdvancedLegalVectorDB()
+            
+            # 기존 인덱스 로드 시도
+            if self.vector_db.load_index() and self.vector_db.load_metadata():
+                print("벡터 데이터베이스 로드 성공")
+            else:
+                print("벡터 데이터베이스를 찾을 수 없음. setup_vector_db.py를 실행하세요.")
+                
+        except Exception as e:
+            print(f"벡터 데이터베이스 초기화 실패: {e}")
+            self.vector_db = None
+    
     def search_precedents(self, query: str, limit: int = 10) -> List[Dict]:
         """
         판례 검색 메서드
@@ -1135,3 +1160,306 @@ class LawAPI:
                 "type": "error",
                 "details": {"error": f"검증 중 오류가 발생했습니다: {e}"}
             } 
+
+    def search_similar_precedents(self, case_description: str, case_type: str = None) -> List[Dict]:
+        """
+        유사 판례 검색 (형사법 LLM 데이터 활용)
+        
+        Args:
+            case_description: 사건 설명
+            case_type: 사건 유형 ('해석례', '판결문', '결정례', '법령')
+            
+        Returns:
+            유사 판례 리스트
+        """
+        try:
+            # 벡터 데이터베이스 검색
+            if self.vector_db:
+                vector_results = self.vector_db.search_similar_cases(
+                    case_description, 
+                    top_k=10,
+                    case_type=case_type
+                )
+                
+                # 결과 가공
+                precedents = []
+                for result in vector_results:
+                    metadata = result.get('metadata', {})
+                    
+                    precedent = {
+                        'case_id': metadata.get('case_id', ''),
+                        'case_type': metadata.get('type', 'Unknown'),
+                        'title': metadata.get('query', '')[:100] if metadata.get('query') else '',
+                        'summary': result.get('text', '')[:500],
+                        'similarity_score': result.get('similarity_score', 0),
+                        'rank': result.get('rank', 0),
+                        'source': 'LLM_Dataset',
+                        'full_text': result.get('text', ''),
+                        'query': metadata.get('query', ''),
+                        'answer': metadata.get('answer', ''),
+                        'context': metadata.get('context', '')
+                    }
+                    
+                    precedents.append(precedent)
+                
+                if precedents:
+                    print(f"벡터 검색 성공: {len(precedents)}건")
+                    return precedents
+            
+            # 폴백: 기존 API 검색
+            api_results = self._search_precedents_api(case_description)
+            
+            if api_results:
+                print(f"API 검색 성공: {len(api_results)}건")
+                return api_results
+            
+            # 최종 폴백: 기본 데이터
+            return self._get_fallback_precedents(case_description)
+            
+        except Exception as e:
+            print(f"유사 판례 검색 오류: {e}")
+            return self._get_fallback_precedents(case_description)
+    
+    def get_legal_interpretation(self, legal_question: str) -> Dict:
+        """
+        법률 해석 질의응답 (형사법 LLM QA 데이터 활용)
+        
+        Args:
+            legal_question: 법률 질문
+            
+        Returns:
+            해석 결과
+        """
+        try:
+            if self.vector_db:
+                # QA 데이터에서 유사한 질문 검색
+                qa_results = self.vector_db.search_similar_cases(
+                    legal_question,
+                    top_k=3,
+                    case_type=None  # 모든 타입 검색
+                )
+                
+                for result in qa_results:
+                    metadata = result.get('metadata', {})
+                    
+                    # QA 타입인지 확인
+                    if metadata.get('type') == 'QA':
+                        return {
+                            'question': metadata.get('question', ''),
+                            'answer': metadata.get('answer', ''),
+                            'context': metadata.get('context', ''),
+                            'similarity_score': result.get('similarity_score', 0),
+                            'source': 'LLM_QA_Dataset'
+                        }
+                    
+                    # 해석례 타입인 경우
+                    elif metadata.get('type') == '해석례':
+                        return {
+                            'question': metadata.get('query', ''),
+                            'answer': metadata.get('answer', ''),
+                            'context': result.get('text', ''),
+                            'similarity_score': result.get('similarity_score', 0),
+                            'source': 'LLM_해석례_Dataset'
+                        }
+            
+            # 폴백: 기존 방식
+            return {
+                'question': legal_question,
+                'answer': '해당 질문에 대한 정확한 해석례를 찾을 수 없습니다. 전문가 상담을 권합니다.',
+                'context': '',
+                'similarity_score': 0,
+                'source': 'Fallback'
+            }
+            
+        except Exception as e:
+            print(f"법률 해석 오류: {e}")
+            return {
+                'question': legal_question,
+                'answer': f'검색 중 오류가 발생했습니다: {str(e)}',
+                'context': '',
+                'similarity_score': 0,
+                'source': 'Error'
+            }
+    
+    def get_enhanced_case_analysis(self, case_details: str) -> Dict:
+        """
+        향상된 사건 분석 (다중 데이터소스 활용)
+        
+        Args:
+            case_details: 사건 세부사항
+            
+        Returns:
+            종합 분석 결과
+        """
+        try:
+            analysis_result = {
+                'case_classification': '',
+                'similar_precedents': [],
+                'applicable_laws': [],
+                'legal_interpretations': [],
+                'sentencing_trends': [],
+                'recommendations': [],
+                'data_sources': []
+            }
+            
+            # 1. 사건 분류 (벡터 기반)
+            if self.vector_db:
+                classification_results = self.vector_db.search_similar_cases(
+                    case_details, top_k=1
+                )
+                
+                if classification_results:
+                    case_type = classification_results[0].get('metadata', {}).get('type', 'Unknown')
+                    analysis_result['case_classification'] = case_type
+            
+            # 2. 유사 판례 검색
+            similar_cases = self.search_similar_precedents(case_details)
+            analysis_result['similar_precedents'] = similar_cases[:5]
+            
+            # 3. 관련 법령 검색
+            related_laws = self.search_related_laws(case_details)
+            analysis_result['applicable_laws'] = related_laws[:3]
+            
+            # 4. 법률 해석
+            interpretation = self.get_legal_interpretation(case_details)
+            if interpretation['answer']:
+                analysis_result['legal_interpretations'].append(interpretation)
+            
+            # 5. 량형 동향 (판결문 데이터 기반)
+            sentencing = self._analyze_sentencing_trends(case_details)
+            analysis_result['sentencing_trends'] = sentencing
+            
+            # 6. 권고사항 생성
+            recommendations = self._generate_recommendations(analysis_result)
+            analysis_result['recommendations'] = recommendations
+            
+            # 7. 데이터 소스 기록
+            analysis_result['data_sources'] = [
+                'LLM_Dataset',
+                'API_Data',
+                'Curated_Knowledge_Base'
+            ]
+            
+            return analysis_result
+            
+        except Exception as e:
+            print(f"향상된 사건 분석 오류: {e}")
+            return {
+                'error': str(e),
+                'case_classification': 'Unknown',
+                'similar_precedents': [],
+                'applicable_laws': [],
+                'legal_interpretations': [],
+                'sentencing_trends': [],
+                'recommendations': ['전문가 상담을 권합니다.'],
+                'data_sources': []
+            }
+    
+    def _analyze_sentencing_trends(self, case_details: str) -> List[Dict]:
+        """량형 동향 분석"""
+        try:
+            trends = []
+            
+            if self.vector_db:
+                # 판결문에서 량형 정보 검색
+                judgment_results = self.vector_db.search_similar_cases(
+                    case_details,
+                    top_k=10,
+                    case_type='판결문'
+                )
+                
+                sentences = []
+                for result in judgment_results:
+                    text = result.get('text', '')
+                    
+                    # 간단한 량형 패턴 추출 (실제로는 더 정교한 NLP 필요)
+                    import re
+                    
+                    # 징역, 벌금 패턴
+                    imprisonment_pattern = r'징역\s*(\d+)년\s*(\d+)월?'
+                    fine_pattern = r'벌금\s*(\d+)만원'
+                    
+                    imprisonment_matches = re.findall(imprisonment_pattern, text)
+                    fine_matches = re.findall(fine_pattern, text)
+                    
+                    for match in imprisonment_matches:
+                        years = int(match[0])
+                        months = int(match[1]) if match[1] else 0
+                        total_months = years * 12 + months
+                        sentences.append({'type': '징역', 'months': total_months})
+                    
+                    for match in fine_matches:
+                        amount = int(match) * 10000  # 만원 -> 원
+                        sentences.append({'type': '벌금', 'amount': amount})
+                
+                # 통계 계산
+                if sentences:
+                    imprisonment_sentences = [s for s in sentences if s['type'] == '징역']
+                    fine_sentences = [s for s in sentences if s['type'] == '벌금']
+                    
+                    if imprisonment_sentences:
+                        avg_months = sum(s['months'] for s in imprisonment_sentences) / len(imprisonment_sentences)
+                        trends.append({
+                            'type': '징역',
+                            'average': f"{int(avg_months // 12)}년 {int(avg_months % 12)}월",
+                            'cases_count': len(imprisonment_sentences)
+                        })
+                    
+                    if fine_sentences:
+                        avg_fine = sum(s['amount'] for s in fine_sentences) / len(fine_sentences)
+                        trends.append({
+                            'type': '벌금',
+                            'average': f"{int(avg_fine):,}원",
+                            'cases_count': len(fine_sentences)
+                        })
+            
+            return trends
+            
+        except Exception as e:
+            print(f"량형 동향 분석 오류: {e}")
+            return []
+    
+    def _generate_recommendations(self, analysis_result: Dict) -> List[str]:
+        """분석 결과를 바탕으로 권고사항 생성"""
+        recommendations = []
+        
+        try:
+            # 유사 판례 기반 권고
+            similar_cases = analysis_result.get('similar_precedents', [])
+            if similar_cases:
+                top_case = similar_cases[0]
+                if top_case.get('similarity_score', 0) > 0.8:
+                    recommendations.append(
+                        f"유사도 {top_case['similarity_score']:.2f}의 높은 유사 사례가 발견되었습니다. "
+                        f"사건번호 {top_case.get('case_id', 'N/A')}를 참고하세요."
+                    )
+            
+            # 법률 해석 기반 권고
+            interpretations = analysis_result.get('legal_interpretations', [])
+            if interpretations:
+                recommendations.append(
+                    "관련 법률 해석례가 있습니다. 해당 해석을 사건에 적용할 수 있는지 검토하세요."
+                )
+            
+            # 량형 동향 기반 권고
+            sentencing = analysis_result.get('sentencing_trends', [])
+            if sentencing:
+                for trend in sentencing:
+                    recommendations.append(
+                        f"{trend['type']} 평균: {trend['average']} "
+                        f"(총 {trend['cases_count']}건 기준)"
+                    )
+            
+            # 기본 권고사항
+            if not recommendations:
+                recommendations.extend([
+                    "전문 변호사와 상담하시기 바랍니다.",
+                    "관련 법령을 정확히 검토하세요.",
+                    "증거 자료를 체계적으로 정리하세요."
+                ])
+            
+        except Exception as e:
+            print(f"권고사항 생성 오류: {e}")
+            recommendations.append("분석 중 오류가 발생했습니다. 전문가 상담을 권합니다.")
+        
+        return recommendations 
