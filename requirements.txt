@@ -15,4 +15,7 @@ sentence-transformers>=2.2.2
 tiktoken>=0.5.1
 faiss-cpu>=1.7.4
 tqdm>=4.66.0
-pathlib 
+pathlib
+datasets>=2.14.0
+scikit-learn>=1.3.0
+huggingface-hub>=0.17.0 
